@@ -144,14 +144,22 @@ const $=id=>document.getElementById(id);
 function applyTheme(){if(theme==='auto')delete document.documentElement.dataset.theme;else document.documentElement.dataset.theme=theme}
 /* ---------- Audio (Web Audio, lokal erzeugt) ---------- */
 let AC=null;
-function unlock(){if(!AC){const C=window.AudioContext||window.webkitAudioContext;if(C)AC=new C()}if(AC&&AC.state!=='running')AC.resume()}
+let HA_=null;
+function unlock(){try{if(navigator.audioSession)navigator.audioSession.type='playback'}catch(e){}
+ if(!AC){const C=window.AudioContext||window.webkitAudioContext;if(C)AC=new C()}
+ if(!AC)return Promise.resolve();
+ const p=AC.state!=='running'?AC.resume():Promise.resolve();
+ try{const s=AC.createBufferSource();s.buffer=AC.createBuffer(1,1,22050);s.connect(AC.destination);s.start(0)}catch(e){}
+ if(!HA_){try{const n=8000,v=new DataView(new ArrayBuffer(44+n)),w=(o,t)=>[...t].forEach((c,i)=>v.setUint8(o+i,c.charCodeAt(0)));w(0,'RIFF');v.setUint32(4,36+n,true);w(8,'WAVEfmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);v.setUint32(24,8000,true);v.setUint32(28,8000,true);v.setUint16(32,1,true);v.setUint16(34,8,true);w(36,'data');v.setUint32(40,n,true);for(let i=0;i<n;i++)v.setUint8(44+i,128);HA_=new Audio(URL.createObjectURL(new Blob([v],{type:'audio/wav'})));HA_.loop=true}catch(e){}}
+ if(HA_)HA_.play().catch(()=>{});
+ return p.catch(()=>{})}
 function beep(f,ms=120,at=0,g=.25){if(!snd||!AC)return;const o=AC.createOscillator(),v=AC.createGain(),t=AC.currentTime+at;o.frequency.value=f;o.type='sine';v.gain.setValueAtTime(g,t);v.gain.exponentialRampToValueAtTime(.001,t+ms/1000);o.connect(v);v.connect(AC.destination);o.start(t);o.stop(t+ms/1000+.02)}
 const CUE={ws:['Los!',[[880,200]]],we:['Geschafft',[[660,120],[660,120,.16]]],rs:['Pause',[[440,250]]],re:['Weiter',[[880,100],[1175,200,.13]]],tick:['',[[600,70]]],nr:['Neue Runde',[[660,120],[880,120,.14],[1100,200,.28]]],fin:['Training abgeschlossen',[[660,150],[880,150,.18],[1100,150,.36],[1320,400,.54]]]};
 function cue(k){const[t,b]=CUE[k];b.forEach(x=>beep(...x));if(t){const f=$('flash');f.textContent=t;f.style.opacity=1;setTimeout(()=>f.style.opacity=.35,900)}if(navigator.vibrate)navigator.vibrate(30)}
 /* ---------- Trainingsmotor ---------- */
 let timer=0,wl=null,lastSec=-1;
 async function wake(){try{if('wakeLock'in navigator&&!wl){wl=await navigator.wakeLock.request('screen');wl.onrelease=()=>wl=null}}catch(e){}}
-function startWorkout(d){unlock();S={day:d,lv:level,segs:buildSegs(d,level),si:0,remain:0,endAt:0,run:true,log:[],t0:Date.now(),paused:0};beginSeg(true);openTr()}
+async function startWorkout(d){await Promise.race([unlock(),new Promise(r=>setTimeout(r,500))]);S={day:d,lv:level,segs:buildSegs(d,level),si:0,remain:0,endAt:0,run:true,log:[],t0:Date.now(),paused:0};beginSeg(true);openTr()}
 function openTr(){$('tr').classList.remove('hide');wake();cancelAnimationFrame(aniRAF);aniRAF=requestAnimationFrame(aniLoop);clearInterval(timer);timer=setInterval(tick,200);draw()}
 function beginSeg(first){const g=S.segs[S.si];S.remain=g.d*1000;S.endAt=Date.now()+S.remain;S.run=true;lastSec=-1;
  if(g.t==='w'&&g.e===0&&first)cue('ws');else cue(g.t==='w'?'re':'rs');persist();draw()}
@@ -171,16 +179,16 @@ function draw(){if(!S)return;const g=S.segs[S.si],isW=g.t==='w',r=Math.max(0,S.r
  $('bP').textContent=S.run?'Pause':'Fortsetzen'}
 function persist(){if(S)kvSet('session',JSON.parse(JSON.stringify(S)))}
 function pauseW(){if(S&&S.run){S.remain=Math.max(0,S.endAt-Date.now());S.run=false;persist();draw()}}
-function resumeW(){if(S&&!S.run){S.endAt=Date.now()+S.remain;S.run=true;wake();persist();draw()}}
+function resumeW(){unlock();if(S&&!S.run){S.endAt=Date.now()+S.remain;S.run=true;wake();persist();draw()}}
 async function finish(status){clearInterval(timer);cancelAnimationFrame(aniRAF);const e=S;S=null;
  await hAdd({date:new Date().toISOString(),day:e.day,level:e.lv,status,segments:e.log,planned:buildSegs(e.day,e.lv).length,total:Math.round((Date.now()-e.t0)/1000),plannedTotal:dur(e.day,e.lv)});
- await kvDel('session');hist=await hAll();if(wl){wl.release();wl=null}
+ await kvDel('session');hist=await hAll();setTimeout(()=>{if(HA_)HA_.pause()},2500);if(wl){wl.release();wl=null}
  if(status==='done')cue('fin');$('tr').classList.add('hide');render()}
 $('bP').onclick=()=>S.run?pauseW():resumeW();
 $('bR').onclick=()=>{if(S){const g=S.segs[S.si];S.remain=g.d*1000;S.endAt=Date.now()+S.remain;lastSec=-1;persist();draw()}};
 $('bS').onclick=()=>{if(S){const g=S.segs[S.si];if(g.t==='w'){S.log.push({ex:EX[g.e],variant:varOf(S.lv,g.e),work:0,rest:0,done:false});}S.si++;if(S.si>=S.segs.length)finish('done');else beginSeg()}};
 $('bA').onclick=()=>{if(S&&confirm('Training wirklich abbrechen?'))finish('aborted')};
-document.addEventListener('visibilitychange',()=>{if(S){if(document.hidden)pauseW();else if(S.run)wake()}});
+document.addEventListener('visibilitychange',()=>{if(S){if(document.hidden)pauseW();else if(S.run)wake()}if(!document.hidden&&AC&&AC.state!=='running')AC.resume().catch(()=>{})});
 addEventListener('pagehide',pauseW);
 /* ---------- Ansichten ---------- */
 const NAVI=[['home','Heute'],['cal','Kalender'],['his','Verlauf'],['set','Mehr']];
@@ -221,10 +229,12 @@ function vHis(){const H=hist.slice().reverse(),dn=hist.filter(h=>h.status==='don
  <h2>Einheiten</h2>`+(H.map(h=>`<div class="row"><div><b>Tag ${h.day}</b> · ${LVN[h.level]}<br><span class="mut" style="font-size:14px">${new Date(h.date).toLocaleDateString('de-DE')} · ${h.segments.filter(s=>s.done).length}/13 Übungen</span></div><div>${h.status==='done'?fmt(h.total):'abgebrochen'}</div></div>`).join('')||'<p class="mut">Keine Einträge.</p>')}
 function vSet(){return `<h1>Mehr</h1>
  <div class="row"><span>Töne</span><button onclick="tgSnd()">${snd?'An':'Aus'}</button></div>
+ <div class="row"><span>Ton testen</span><button onclick="testSnd()">Abspielen</button></div>
  <div class="row"><span>Design</span><button onclick="tgTheme()">${{auto:'Automatisch',dark:'Dunkel',light:'Hell'}[theme]}</button></div>
  <div class="row"><span>Daten exportieren (JSON)</span><button onclick="exp()">Export</button></div>
  <div class="row"><span>Alle Daten löschen</span><button class="d" onclick="wipe()">Löschen</button></div>
  <p class="mut" style="font-size:14px">Alle Daten bleiben auf diesem Gerät (IndexedDB). Keine Registrierung, keine Cloud, kein Tracking. Beim Wechsel in eine andere App wird das Training automatisch pausiert und die Restzeit gespeichert.</p>`}
+window.testSnd=()=>{unlock().then(()=>{if(!snd){alert('Töne sind ausgeschaltet.');return}cue('ws');setTimeout(()=>cue('re'),600)})};
 window.tgSnd=()=>{snd=!snd;kvSet('snd',snd);unlock();if(snd)beep(880);render()};
 window.tgTheme=()=>{theme={auto:'dark',dark:'light',light:'auto'}[theme];kvSet('theme',theme);applyTheme();render()};
 window.exp=async()=>{const blob=new Blob([JSON.stringify({exported:new Date().toISOString(),level,skips,history:hist,matrix:MX},null,1)],{type:'application/json'});const f=new File([blob],'fit30-export.json',{type:'application/json'});
