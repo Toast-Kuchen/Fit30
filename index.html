@@ -53,7 +53,7 @@ table{width:100%;border-collapse:collapse}td,th{padding:7px 4px;text-align:left;
  <div style="text-align:center"><div id="nm" style="font:800 28px system-ui;letter-spacing:-.02em"></div><div id="vr" class="mut"></div></div>
  <div id="tm"></div>
  <div class="bar" style="margin:8px 0"><i id="pb" style="width:0"></i></div>
- <div style="display:flex;justify-content:space-between" class="mut"><span id="nx"></span><span id="rem"></span></div>
+ <div style="display:flex;justify-content:space-between;gap:12px" class="mut"><span id="nx"></span><span id="rem" style="white-space:nowrap"></span></div>
  <div class="ctl"><button id="bP">Pause</button><button id="bR">Wiederholen</button><button id="bS">Überspringen</button><button id="bA" class="d">Abbrechen</button></div>
 </div>
 <script>
@@ -167,13 +167,13 @@ function tick(){if(!S)return;if(S.run){S.remain=S.endAt-Date.now();const s=Math.
 function advance(done){const g=S.segs[S.si];if(g.t==='w')S.log.push({ex:EX[g.e],variant:varOf(S.lv,g.e),work:g.d,rest:MX[S.day][S.lv].r,done});
  if(g.t==='w')cue('we');S.si++;if(S.si>=S.segs.length)return finish('done');beginSeg()}
 function draw(){if(!S)return;const g=S.segs[S.si],isW=g.t==='w',r=Math.max(0,S.remain)/1000;
- $('tr').classList.toggle('rest',!isW);aniEx=g.e;aniLv=S.lv;aniPlay=isW&&S.run;
+ $('tr').classList.toggle('rest',!isW);aniEx=isW?g.e:Math.min(g.e+1,12);aniLv=S.lv;aniPlay=isW&&S.run;
  const wi=S.segs.slice(0,S.si+1).filter(x=>x.t==='w').length;
  $('pos').textContent=isW?'Abschnitt '+wi+' von 13':'Pause nach Abschnitt '+wi;$('rnd').textContent='Runde 1 von 1';
  const nxt=isW?S.segs[S.si+1]:g;
- $('nm').textContent=isW?EX[g.e]:'Pause';$('vr').textContent=isW?varOf(S.lv,g.e):'Gleich: '+EX[g.e];
+ $('nm').textContent=isW?EX[g.e]:'Pause';$('vr').textContent=isW?varOf(S.lv,g.e):'Gleich: '+EX[g.e+1];
  $('tm').textContent=fmt(r);$('tm').style.color='var(--ac)';
- $('nx').textContent=nxt?(isW?'Danach: Pause '+nxt.d+' s':'Nächste: '+EX[nxt.e]+' · '+MX[S.day][S.lv].w+' s'):'Letzte Übung';
+ $('nx').textContent=g.e<12?'Nächste: '+EX[g.e+1]+' · '+MX[S.day][S.lv].w+'\u00a0s':'Letzte Übung';
  const tot=S.segs.reduce((a,x)=>a+x.d,0);let left=r;for(let i=S.si+1;i<S.segs.length;i++)left+=S.segs[i].d;
  $('rem').textContent='Gesamt noch '+fmt(left);$('pb').style.width=(100-left/tot*100)+'%';
  $('bP').textContent=S.run?'Pause':'Fortsetzen'}
