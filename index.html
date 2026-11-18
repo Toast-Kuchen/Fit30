@@ -145,16 +145,23 @@ const $=id=>document.getElementById(id);
 function applyTheme(){if(theme==='auto')delete document.documentElement.dataset.theme;else document.documentElement.dataset.theme=theme}
 /* ---------- Audio (Web Audio, lokal erzeugt) ---------- */
 let AC=null;
-let HA_=null;
+let HA_=null,BA=null;const WC={};
+function wavURI(f,ms,amp=9000){const k=f+'_'+ms+'_'+amp;if(WC[k])return WC[k];const sr=22050,n=Math.floor(sr*ms/1000),b=new DataView(new ArrayBuffer(44+n*2)),w=(o,t)=>[...t].forEach((c,i)=>b.setUint8(o+i,c.charCodeAt(0)));
+ w(0,'RIFF');b.setUint32(4,36+n*2,true);w(8,'WAVEfmt ');b.setUint32(16,16,true);b.setUint16(20,1,true);b.setUint16(22,1,true);b.setUint32(24,sr,true);b.setUint32(28,sr*2,true);b.setUint16(32,2,true);b.setUint16(34,16,true);w(36,'data');b.setUint32(40,n*2,true);
+ for(let i=0;i<n;i++)b.setInt16(44+i*2,Math.sin(2*Math.PI*f*i/sr)*amp*Math.min(1,i/200,(n-i)/400),true);
+ let s='';const u=new Uint8Array(b.buffer);for(let i=0;i<u.length;i++)s+=String.fromCharCode(u[i]);return WC[k]='data:audio/wav;base64,'+btoa(s)}
+const useAC=()=>!!(AC&&AC.state==='running'&&HA_&&!HA_.paused);
 function unlock(){try{if(navigator.audioSession)navigator.audioSession.type='playback'}catch(e){}
  if(!AC){const C=window.AudioContext||window.webkitAudioContext;if(C)AC=new C()}
- if(!AC)return Promise.resolve();
- const p=AC.state!=='running'?AC.resume():Promise.resolve();
- try{const s=AC.createBufferSource();s.buffer=AC.createBuffer(1,1,22050);s.connect(AC.destination);s.start(0)}catch(e){}
- if(!HA_){try{const n=8000,v=new DataView(new ArrayBuffer(44+n)),w=(o,t)=>[...t].forEach((c,i)=>v.setUint8(o+i,c.charCodeAt(0)));w(0,'RIFF');v.setUint32(4,36+n,true);w(8,'WAVEfmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);v.setUint32(24,8000,true);v.setUint32(28,8000,true);v.setUint16(32,1,true);v.setUint16(34,8,true);w(36,'data');v.setUint32(40,n,true);for(let i=0;i<n;i++)v.setUint8(44+i,128);HA_=new Audio(URL.createObjectURL(new Blob([v],{type:'audio/wav'})));HA_.loop=true}catch(e){}}
- if(HA_)HA_.play().catch(()=>{});
- return p.catch(()=>{})}
-function beep(f,ms=120,at=0,g=.25){if(!snd||!AC)return;const o=AC.createOscillator(),v=AC.createGain(),t=AC.currentTime+at;o.frequency.value=f;o.type='sine';v.gain.setValueAtTime(g,t);v.gain.exponentialRampToValueAtTime(.001,t+ms/1000);o.connect(v);v.connect(AC.destination);o.start(t);o.stop(t+ms/1000+.02)}
+ let p=Promise.resolve();
+ if(AC){if(AC.state!=='running')p=AC.resume();try{const s=AC.createBufferSource();s.buffer=AC.createBuffer(1,1,22050);s.connect(AC.destination);s.start(0)}catch(e){}}
+ try{if(!HA_){HA_=new Audio(wavURI(30,1000,40));HA_.loop=true;HA_.setAttribute('playsinline','')}if(!BA){BA=new Audio(wavURI(30,100,40));BA.setAttribute('playsinline','')}
+  HA_.play().catch(()=>{});BA.play().catch(()=>{})}catch(e){}
+ return Promise.resolve(p).catch(()=>{}).then(()=>new Promise(r=>setTimeout(r,80)))}
+['touchend','click'].forEach(ev=>document.addEventListener(ev,()=>{if(AC&&AC.state!=='running')AC.resume().catch(()=>{});if(HA_&&HA_.paused&&S)HA_.play().catch(()=>{})},{passive:true}));
+function beep(f,ms=120,at=0,g=.25){if(!snd)return;
+ if(useAC()){const o=AC.createOscillator(),v=AC.createGain(),t=AC.currentTime+at;o.frequency.value=f;o.type='sine';v.gain.setValueAtTime(g,t);v.gain.exponentialRampToValueAtTime(.001,t+ms/1000);o.connect(v);v.connect(AC.destination);o.start(t);o.stop(t+ms/1000+.02);return}
+ if(!BA)return;setTimeout(()=>{try{BA.pause();BA.src=wavURI(f,ms);BA.currentTime=0;BA.play().catch(()=>{})}catch(e){}},at*1000)}
 const CUE={ws:['Los!',[[880,200]]],we:['Geschafft',[[660,120],[660,120,.16]]],rs:['Pause',[[440,250]]],re:['Weiter',[[880,100],[1175,200,.13]]],tick:['',[[600,70]]],nr:['Neue Runde',[[660,120],[880,120,.14],[1100,200,.28]]],fin:['Training abgeschlossen',[[660,150],[880,150,.18],[1100,150,.36],[1320,400,.54]]]};
 function cue(k){const[t,b]=CUE[k];b.forEach(x=>beep(...x));if(t){const f=$('flash');f.textContent=t;f.style.opacity=1;setTimeout(()=>f.style.opacity=0,1200)}if(navigator.vibrate)navigator.vibrate(30)}
 /* ---------- Trainingsmotor ---------- */
@@ -251,7 +258,7 @@ function vSet(){const sw=(on,f)=>`<button class="sw ${on?'on':''}" onclick="${f}
  <h2>Ton und Anzeige</h2><div class="card"><div class="row"><span>Töne</span>${sw(snd,'tgSnd()')}</div><div class="row"><span>Ton testen</span><button onclick="testSnd()">Abspielen</button></div><div class="row" style="border:0"><span>Design</span><button onclick="tgTheme()">${{auto:'Automatisch',dark:'Dunkel',light:'Hell'}[theme]}</button></div></div>
  <h2>Daten</h2><div class="card"><div class="row"><span>Export (JSON)</span><button onclick="exp()">Export</button></div><div class="row" style="border:0"><span>Alle Daten löschen</span><button class="d" onclick="wipe()">Löschen</button></div></div>
  <p class="mut" style="font-size:13px">Alle Daten bleiben auf diesem Gerät. Keine Registrierung, keine Cloud, kein Tracking. Beim Wechsel in eine andere App pausiert das Training automatisch.</p>`}
-window.testSnd=()=>{unlock().then(()=>{if(!snd){alert('Töne sind ausgeschaltet.');return}cue('ws');setTimeout(()=>cue('re'),600)})};
+window.testSnd=()=>{unlock().then(()=>{if(!snd){alert('Töne sind ausgeschaltet.');return}cue('ws');setTimeout(()=>cue('re'),600);setTimeout(()=>alert('Audio-Status: '+(AC?AC.state:'nicht verfügbar')+' · Stummschleife: '+(HA_&&!HA_.paused?'läuft':'aus')+' · Ausgabe: '+(useAC()?'WebAudio':'Ersatzweg')),1600)})};
 window.tgSnd=()=>{snd=!snd;kvSet('snd',snd);unlock();if(snd)beep(880);render()};
 window.tgTheme=()=>{theme={auto:'dark',dark:'light',light:'auto'}[theme];kvSet('theme',theme);applyTheme();render()};
 window.exp=async()=>{const blob=new Blob([JSON.stringify({exported:new Date().toISOString(),level,skips,history:hist,prog},null,1)],{type:'application/json'});const f=new File([blob],'fit30-export.json',{type:'application/json'});
